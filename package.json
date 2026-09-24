@@ -1,0 +1,20 @@
+{
+  "name": "pi-signal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Signal chat bot for the EVO-X3: signal-cli daemon events -> pi SDK sessions",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.87.1",
+    "@earendil-works/pi-ai": "0.87.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}
