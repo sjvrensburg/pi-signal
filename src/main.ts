@@ -215,7 +215,11 @@ async function openChat(key: string, to: string, fresh = false, modelName: keyof
 		if (m.stopReason === "toolUse") return;
 		const body = (m.content ?? []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("").trim();
 		const msg = m.stopReason === "error" ? `⚠️ ${m.errorMessage ?? "model error"}` : body;
-		if (msg && m.stopReason !== "aborted") send(to, msg).catch((e) => log("reply failed:", e.message));
+		// Log the send too: without it a delivered reply leaves no trace in the journal.
+		if (msg && m.stopReason !== "aborted")
+			send(to, msg)
+				.then(() => log(`out ${key}: ${msg.length} chars`))
+				.catch((e) => log("reply failed:", e.message));
 	});
 	chats.set(key, chat);
 	return chat;
