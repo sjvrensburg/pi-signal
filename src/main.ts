@@ -212,8 +212,11 @@ async function openChat(key: string, to: string, fresh = false, modelName: keyof
 	session.subscribe((ev: any) => {
 		if (ev.type !== "message_end" || ev.message?.role !== "assistant") return;
 		const m = ev.message;
-		if (m.stopReason === "toolUse") return;
 		const body = (m.content ?? []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("").trim();
+		// Text alongside a tool call is sent too: it is how the model says "converting the
+		// PDF, ~5 min" before a long step, and without it the phone hears nothing until the
+		// whole turn ends. A tool-call message with no text (the usual case) sends nothing.
+		if (m.stopReason === "toolUse" && !body) return;
 		const msg = m.stopReason === "error" ? `⚠️ ${m.errorMessage ?? "model error"}` : body;
 		// Log the send too: without it a delivered reply leaves no trace in the journal.
 		if (msg && m.stopReason !== "aborted")
