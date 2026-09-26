@@ -206,6 +206,11 @@ async function openChat(key: string, to: string, fresh = false, modelName: keyof
 		sessionManager: fresh ? SessionManager.create(WORK, dir) : SessionManager.continueRecent(WORK, dir),
 		customTools: toolsFor(to),
 	});
+	// createAgentSession alone never emits session_start: pi only fires it from bindExtensions().
+	// Without this call the extensions that set up there never do (found 2026-09-26): the memory
+	// snapshot (@pify/memory), the session-search index, pi-condense's config, the judge's
+	// session id. pi-web calls it too. No uiContext: headless, so extensions see hasUI=false.
+	await session.bindExtensions({ onError: (e: any) => log("extension error:", e?.error?.message ?? e?.error ?? e) });
 	const chat: Chat = { key, to, session, modelName };
 	// Deliver every finished assistant turn as it lands, so a follow-up queued mid-run gets its
 	// own reply instead of only the last one surviving.
