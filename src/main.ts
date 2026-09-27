@@ -40,7 +40,7 @@ const ALLOW = new Set((process.env.PI_SIGNAL_ALLOW ?? "").split(",").map((s) => 
 const STATE = join(homedir(), ".local/state/pi-signal");
 const WORK = join(STATE, "work"); // cwd for sessions; its AGENTS.md is the bot's standing instructions
 const MODELS = {
-	terse: ["local-ornith", "ornith-1.5-35b-a3b"], // :8092, two slots, terse template (default)
+	terse: ["local-ornith", "cybertiel-coder-35b-a3b"], // :8092, two slots, since 2026-09-27 (was Ornith)
 	prose: ["local-ornith35", "ornith-1.5-35b-a3b"], // :8088, one slot shared with Open Notebook
 } as const;
 const MAX_CHARS = 7900; // Hermes split at 8000 (MAX_MESSAGE_LENGTH); signal-send does the same
