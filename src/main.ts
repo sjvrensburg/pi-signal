@@ -17,7 +17,7 @@
  * NOTHING ELSE MAY RECEIVE. Only one consumer may read the daemon's events or messages get
  * split between agents. Hermes was that consumer until 2026-09-24; this is now.
  */
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, basename } from "node:path";
@@ -276,6 +276,31 @@ async function handleCommand(chat: Chat, cmd: string, arg: string) {
 	}
 }
 
+
+/**
+ * SHORTLIST REFERENCES ARE RESOLVED HERE, NOT BY THE MODEL. The daily podcast-topic-discovery
+ * shortlist goes out through signal-send, outside this session, so "topic #2" in a long-lived
+ * chat gets resolved from whichever older list is still in context: wrong episode on 2026-10-01
+ * and again on 2026-10-02, after a skill instruction to run resolve_topic.py was ignored. So the
+ * script runs before the model sees the message. Success: its output is injected into the
+ * prompt. Failure (stale, no such item, ambiguous): the operator is asked directly and the
+ * model is never invoked, so it cannot fall back to context.
+ */
+const RESOLVE = join(homedir(), ".pi/agent/skills/open-notebook-podcast/scripts/resolve_topic.py");
+const TOPIC_REF = /^(?:\W*(?:generate|make|do|create|run|start)?\W*(?:the\s+|a\s+)?(?:podcast|episode)?\W*(?:on|for|about|from|based on)?\W*(?:the\s+)?(?:topic\s*)?#?\s*(\d{1,2})\W*(?:please|thanks|now)?\W*)$/i;
+function resolveTopicRef(text: string): Promise<{ ok: boolean; out: string } | null> {
+	const n = text.length <= 80 && /\d/.test(text) ? text.match(TOPIC_REF)?.[1] : undefined;
+	// Needs "topic", "#" or podcast/episode wording, or be a bare number; "I have 3 questions" no.
+	if (!n || !(/#|topic|podcast|episode/i.test(text) || /^\W*\d{1,2}\W*$/.test(text))) return Promise.resolve(null);
+	return new Promise((res) =>
+		execFile("python3", [RESOLVE, n], { timeout: 15_000 }, (err, stdout, stderr) => {
+			// A bare number with no usable shortlist is probably not about podcasts: stay out of it.
+			if (err && /^\W*\d{1,2}\W*$/.test(text)) return res(null);
+			res({ ok: !err, out: (err ? stderr || String(err) : stdout).trim() });
+		}),
+	);
+}
+
 async function handleEnvelope(env: any) {
 	let dm: any;
 	let key: string;
@@ -304,8 +329,23 @@ async function handleEnvelope(env: any) {
 	const m = textIn.match(/^(\/\w+)\s*(.*)$/s);
 	if (m && ["/new", "/stop", "/model", "/help"].includes(m[1])) return handleCommand(chat, m[1], m[2].trim());
 
+	let resolved = "";
+	if (!paths.length) {
+		const r = await resolveTopicRef(textIn);
+		if (r && !r.ok) {
+			log(`shortlist ref refused: ${r.out.slice(0, 120)}`);
+			return send(to, `Can't resolve that against a current shortlist: ${r.out}\nWhich topic do you mean? Send the title.`).catch(() => {});
+		}
+		if (r) {
+			log(`shortlist ref resolved: ${r.out.split("\n")[1] ?? ""}`);
+			resolved =
+				"\n\n[pi-signal resolved this shortlist reference from the newest shortlist file. Use ONLY the item below; " +
+				"ignore any other list in your context. State the title and shortlist date in your first line. " +
+				"The pick is already logged; do not run resolve_topic.py or pref_log.py again.]\n" + r.out;
+		}
+	}
 	const prompt =
-		textIn +
+		textIn + resolved +
 		(paths.length ? `\n\n[Attached file(s), saved locally: ${paths.join(", ")}]` : "");
 	if (chat.session.isStreaming) {
 		await chat.session.followUp(prompt);
