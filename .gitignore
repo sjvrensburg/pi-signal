@@ -1,1 +1,4 @@
 node_modules/
+
+# Local pi project settings (session-search config etc.)
+.pi/
