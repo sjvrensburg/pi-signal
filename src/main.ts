@@ -1,5 +1,6 @@
 /**
- * pi-signal — Signal chat for the EVO-X3, on the pi SDK. docs/13 Phase D in halo-prep.
+ * pi-signal — Signal chat with a pi agent, on the pi SDK. Written for the EVO-X3 (halo-prep
+ * docs/13 Phase D); every box-specific value below is an env var with that box's value as default.
  *
  * signal-cli daemon (SSE events, JSON-RPC sends) <-> one persistent pi session per chat.
  * Replaces Hermes's Signal gateway, which was removed on 2026-09-24.
@@ -39,10 +40,23 @@ const OWN_DEVICE = Number(process.env.PI_SIGNAL_OWN_DEVICE ?? "2"); // signal-cl
 const ALLOW = new Set((process.env.PI_SIGNAL_ALLOW ?? "").split(",").map((s) => s.trim()).filter(Boolean));
 const STATE = join(homedir(), ".local/state/pi-signal");
 const WORK = join(STATE, "work"); // cwd for sessions; its AGENTS.md is the bot's standing instructions
+// Two models, as pi "provider/id". The defaults are the EVO-X3's: terse = :8092, two slots,
+// CyberTiel since 2026-09-27 (was Ornith); prose = :8088, one slot shared with Open Notebook.
+const providerModel = (v: string) => {
+	const i = v.indexOf("/");
+	if (i < 1) throw new Error(`model "${v}" is not provider/id`);
+	return [v.slice(0, i), v.slice(i + 1)] as const;
+};
 const MODELS = {
-	terse: ["local-ornith", "cybertiel-coder-35b-a3b"], // :8092, two slots, since 2026-09-27 (was Ornith)
-	prose: ["local-ornith35", "ornith-1.5-35b-a3b"], // :8088, one slot shared with Open Notebook
-} as const;
+	terse: providerModel(process.env.PI_SIGNAL_TERSE_MODEL ?? "local-ornith/cybertiel-coder-35b-a3b"),
+	prose: providerModel(process.env.PI_SIGNAL_PROSE_MODEL ?? "local-ornith35/ornith-1.5-35b-a3b"),
+};
+// voice_message: an OpenAI-style /v1/audio/speech server and a lease helper that starts it on
+// demand and stops it when the last user is done (halo-prep scripts/vibevoice-lease.sh). No
+// helper file = the tool reports that voice is unavailable here.
+const TTS_URL = process.env.PI_SIGNAL_TTS_URL ?? "http://127.0.0.1:8087/v1/audio/speech";
+const TTS_MODEL = process.env.PI_SIGNAL_TTS_MODEL ?? join(homedir(), "models/vibevoice-1.5b"); // a literal path, not a name
+const TTS_LEASE = process.env.PI_SIGNAL_TTS_LEASE ?? join(homedir(), "Projects/halo-prep/scripts/vibevoice-lease.sh");
 const MAX_CHARS = 7900; // Hermes split at 8000 (MAX_MESSAGE_LENGTH); signal-send does the same
 for (const d of [STATE, WORK, join(STATE, "sessions"), join(STATE, "attachments"), join(STATE, "out")])
 	mkdirSync(d, { recursive: true });
@@ -153,7 +167,8 @@ function toolsFor(to: string) {
 			label: "Remind",
 			description:
 				"Schedule a Signal reminder to the user. Give EITHER `in` (a delay such as 20m, 2h, 1d) OR " +
-				"`at` (a systemd calendar time such as '2026-09-25 08:00' or 'Mon 09:00'). Survives restarts.",
+				"`at` (a systemd calendar time such as '2026-09-25 08:00' or 'Mon 09:00'). Survives a bot " +
+				"restart but NOT a reboot of the box: say so when scheduling one more than a few hours out.",
 			parameters: Type.Object({
 				text: Type.String({ description: "The reminder text." }),
 				in: Type.Optional(Type.String({ description: "Delay, e.g. 20m, 2h, 1d." })),
@@ -161,7 +176,7 @@ function toolsFor(to: string) {
 			}),
 			async execute(_id, p) {
 				// A transient systemd timer, not a timer held in this process: it survives the bot
-				// restarting. This replaces Hermes's reminder-cron skill (18 calls into `hermes cron`).
+				// restarting. Transient units live in /run, so a reboot drops it silently. This replaces Hermes's reminder-cron skill (18 calls into `hermes cron`).
 				if (!!p.in === !!p.at) return text("Give exactly one of `in` or `at`.");
 				const when = p.in ? [`--on-active=${p.in}`] : [`--on-calendar=${p.at}`];
 				const unit = `pi-remind-${Date.now()}`;
@@ -188,16 +203,17 @@ function toolsFor(to: string) {
 			async execute(_id, p) {
 				// vibevoice-api is on demand: the lease helper starts it, refcounts it, and stops it
 				// again (halo-prep scripts/vibevoice-lease.sh). Never a bare systemctl stop.
+				if (!existsSync(TTS_LEASE)) return text(`Voice is not set up here (no ${TTS_LEASE}).`);
 				const tag = `voice-${Date.now()}`;
-				const lease = join(homedir(), "Projects/halo-prep/scripts/vibevoice-lease.sh");
+				const lease = TTS_LEASE;
 				const wav = join(STATE, "out", `${tag}.wav`);
 				await sh("bash", [lease, "acquire", tag]);
 				try {
-					const r = await fetch("http://127.0.0.1:8087/v1/audio/speech", {
+					const r = await fetch(TTS_URL, {
 						method: "POST",
 						headers: { "Content-Type": "application/json" },
 						body: JSON.stringify({
-							model: "/home/stefan/models/vibevoice-1.5b", // a literal path, not a name
+							model: TTS_MODEL,
 							voice: p.voice ?? "en-Alice_woman",
 							input: p.text,
 							response_format: "wav",
@@ -292,7 +308,7 @@ async function handleCommand(chat: Chat, cmd: string, arg: string) {
 			return send(chat.to, "Stopped.");
 		case "/model": {
 			if (arg !== "terse" && arg !== "prose")
-				return send(chat.to, `Model: ${chat.modelName}. Use /model terse (:8092) or /model prose (:8088).`);
+				return send(chat.to, `Model: ${chat.modelName}. Use /model terse (${MODELS.terse.join("/")}) or /model prose (${MODELS.prose.join("/")}).`);
 			const [prov, id] = MODELS[arg];
 			await chat.session.setModel(runtime.getModel(prov, id)!);
 			chat.modelName = arg;
