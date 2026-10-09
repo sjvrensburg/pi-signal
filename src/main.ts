@@ -97,6 +97,27 @@ interface Chat {
 	modelName: keyof typeof MODELS;
 }
 const chats = new Map<string, Chat>();
+
+/**
+ * ONE SESSION PER LOCAL DAY, AND EVERY MESSAGE CARRIES ITS TIME. Until 2026-10-09 a chat was one
+ * session forever, and nothing in it said what day it was. On 2026-10-08 "weather for Gqeberha
+ * today" was answered from the 2026-10-07 tool output still in context ("I already have it"),
+ * and on 2026-09-29 the model took 2026-09-26 for today from an old forecast. The timestamp lets
+ * the model see time has passed; the daily rollover keeps yesterday's tool output out of reach.
+ * Continuity across days comes from @pify/memory and pi-session-search, which both run on
+ * session_start. /new still forces a fresh session mid-day.
+ */
+const localDay = (d: Date) => d.toLocaleDateString("en-CA"); // YYYY-MM-DD in the service's TZ
+const stamp = (d: Date) =>
+	d.toLocaleString("en-GB", {
+		weekday: "short", year: "numeric", month: "short", day: "numeric",
+		hour: "2-digit", minute: "2-digit", timeZoneName: "short",
+	});
+function lastActivity(s: AgentSession): Date | null {
+	const e = s.sessionManager.getEntries();
+	const ts = e.length ? (e[e.length - 1] as any).timestamp : undefined;
+	return ts ? new Date(ts) : null;
+}
 let runtime: ModelRuntime;
 
 function sh(cmd: string, args: string[], input?: string): Promise<{ code: number; out: string }> {
@@ -234,7 +255,13 @@ async function openChat(key: string, to: string, fresh = false, modelName: keyof
 }
 
 async function chatFor(key: string, to: string) {
-	return chats.get(key) ?? (await openChat(key, to));
+	const chat = chats.get(key) ?? (await openChat(key, to));
+	const last = lastActivity(chat.session);
+	// Never roll over mid-run: a follow-up to a still-running turn belongs to it.
+	if (!last || chat.session.isStreaming || localDay(last) === localDay(new Date())) return chat;
+	log(`${key}: new day, fresh session (last activity ${last.toISOString()})`);
+	chat.session.dispose();
+	return openChat(key, to, true, chat.modelName);
 }
 
 // ── inbound ─────────────────────────────────────────────────────────────────────────────────
@@ -345,7 +372,7 @@ async function handleEnvelope(env: any) {
 		}
 	}
 	const prompt =
-		textIn + resolved +
+		`[${stamp(new Date())}] ` + textIn + resolved +
 		(paths.length ? `\n\n[Attached file(s), saved locally: ${paths.join(", ")}]` : "");
 	if (chat.session.isStreaming) {
 		await chat.session.followUp(prompt);
