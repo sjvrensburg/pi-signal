@@ -114,7 +114,7 @@ const chats = new Map<string, Chat>();
 
 /**
  * ONE SESSION PER LOCAL DAY, AND EVERY MESSAGE CARRIES ITS TIME. Until 2026-10-09 a chat was one
- * session forever, and nothing in it said what day it was. On 2026-10-08 "weather for Gqeberha
+ * session forever, and nothing in it said what day it was. On 2026-10-08 "weather for my city
  * today" was answered from the 2026-10-07 tool output still in context ("I already have it"),
  * and on 2026-09-29 the model took 2026-09-26 for today from an old forecast. The timestamp lets
  * the model see time has passed; the daily rollover keeps yesterday's tool output out of reach.
