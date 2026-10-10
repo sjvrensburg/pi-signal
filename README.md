@@ -5,7 +5,8 @@ between `signal-cli` (its SSE event stream and JSON-RPC sends) and the pi SDK: o
 per chat, with the machine's shell and a few Signal-specific tools.
 
 Written for the EVO-X3 home AI box, where it replaced Hermes's Signal gateway on 2026-09-24
-(design: `halo-prep/docs/13-pi.md` Phase D; unit: `halo-prep/config/pi-signal.service`). Every
+(design: `halo-prep/docs/13-pi.md` Phase D; unit: `halo-prep/config/pi-signal.service`; halo-prep is
+the author's private runbook for that box, so these references are provenance, not links). Every
 value specific to that box is an environment variable whose default is that box's value.
 
 - **Chat:** Signal's Note to Self on the machine's own account (`signal-cli` is a linked
