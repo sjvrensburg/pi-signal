@@ -41,14 +41,15 @@ const ALLOW = new Set((process.env.PI_SIGNAL_ALLOW ?? "").split(",").map((s) => 
 const STATE = join(homedir(), ".local/state/pi-signal");
 const WORK = join(STATE, "work"); // cwd for sessions; its AGENTS.md is the bot's standing instructions
 // Two models, as pi "provider/id". The defaults are the EVO-X3's: terse = :8092, two slots,
-// CyberTiel since 2026-09-27 (was Ornith); prose = :8088, one slot shared with Open Notebook.
+// Gemma-4-E4B-it since 2026-10-11 (CyberTiel 09-27 to 10-11, Ornith before); prose = :8088,
+// one slot shared with Open Notebook.
 const providerModel = (v: string) => {
 	const i = v.indexOf("/");
 	if (i < 1) throw new Error(`model "${v}" is not provider/id`);
 	return [v.slice(0, i), v.slice(i + 1)] as const;
 };
 const MODELS = {
-	terse: providerModel(process.env.PI_SIGNAL_TERSE_MODEL ?? "local-ornith/cybertiel-coder-35b-a3b"),
+	terse: providerModel(process.env.PI_SIGNAL_TERSE_MODEL ?? "local-ornith/gemma4-e4b"),
 	prose: providerModel(process.env.PI_SIGNAL_PROSE_MODEL ?? "local-ornith35/ornith-1.5-35b-a3b"),
 };
 // voice_message: an OpenAI-style /v1/audio/speech server and a lease helper that starts it on
