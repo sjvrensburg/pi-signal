@@ -64,6 +64,22 @@ for (const d of [STATE, WORK, join(STATE, "sessions"), join(STATE, "attachments"
 
 const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a);
 
+// A disposed session's extensions can still fire callbacks. pi-session-search's background
+// index sync calls ctx.ui.setStatus from a worker "message" handler with no liveness check, so
+// after /new or the new-day reset (both dispose the session) the next progress tick throws
+// "This extension ctx is stale after session replacement or reload". Thrown from an event
+// handler, nothing can catch it locally, and it killed the bot (2026-10-12 06:31, restarted by
+// systemd 5 s later). Only that error is swallowed; anything else still exits, as before, so
+// systemd restarts us and the failure is visible in the journal.
+process.on("uncaughtException", (err) => {
+	if (/extension ctx is stale after session replacement or reload/.test(String(err?.message))) {
+		log("ignored stale extension callback after session replacement:", err.stack?.split("\n")[2]?.trim() ?? "");
+		return;
+	}
+	console.error(err);
+	process.exit(1);
+});
+
 // ── signal-cli JSON-RPC ─────────────────────────────────────────────────────────────────────
 const sentTimestamps = new Set<number>();
 
