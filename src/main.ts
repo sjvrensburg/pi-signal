@@ -49,7 +49,7 @@ const providerModel = (v: string) => {
 	return [v.slice(0, i), v.slice(i + 1)] as const;
 };
 const MODELS = {
-	terse: providerModel(process.env.PI_SIGNAL_TERSE_MODEL ?? "local-ornith/gemma4-e4b"),
+	terse: providerModel(process.env.PI_SIGNAL_TERSE_MODEL ?? "local-ornith/caveowl-35b-a3b"),
 	prose: providerModel(process.env.PI_SIGNAL_PROSE_MODEL ?? "local-ornith35/ornith-1.5-35b-a3b"),
 };
 // voice_message: an OpenAI-style /v1/audio/speech server and a lease helper that starts it on
